@@ -1,0 +1,165 @@
+---
+title: "Text predictor"
+output: html_document
+date: "2025-09-25"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Language predictor
+
+For this predictor, we will first look at the data, analyze it, clean it and then work our way into a model that can use n-grams to predict the next word.
+
+## Reading the data
+
+The first step will be to read the data, and we will focus on the English language, which is what we can undestand.  The data will come from the URL provided, but once downloaded, will be stored out of the repository, to prevent from crowding it in github.
+
+```{r cars}
+
+library(stringi)
+library(kableExtra)
+
+read_file <- function(file_name) {
+  con <- file(file_name, open = "r")
+  data <- readLines(con, encoding = "UTF-8", skipNul = TRUE)
+  close(con)
+  return(data)
+}
+
+calculate_mbytes <- function(bytes) {
+  return(round(bytes)/1024 ^ 2)
+}
+
+file_paths <- c("../final_first/en_US/en_US.blogs.txt", "../final_first/en_US/en_US.twitter.txt", "../final_first/en_US/en_US.news.txt")
+file_contents <- sapply(file_paths, read_file)
+file_size <- sapply(sapply(file_paths, file.info)['size',],calculate_mbytes)
+file_lines <- sapply(file_contents, length)
+file_words <- sapply(file_contents, stri_stats_latex)[4,]
+file_chars <- sapply(sapply(file_contents, nchar),sum)
+file_length <- sapply(file_contents, length)
+file_wpl <- lapply(file_contents, function(x) stri_count_words(x))
+file_wpl_mean <- sapply(file_wpl,mean)
+
+summary_stats = data.frame(size = file_size, lines = file_lines, 
+                           words = file_words, chars = file_chars, words_per_line = file_wpl_mean)
+
+kable(summary_stats,
+      row.names = TRUE,
+      align = c("l", rep("r", 7)),
+      caption = "") %>% kable_styling(position = "left")
+
+```
+
+```{r}
+library(gridExtra)
+par(mfrow = c(length(file_paths),1))
+
+# Loop through file paths and create plots
+for (file_path in file_paths) {
+  hist(file_wpl[[file_path]], breaks = 50, main = file_path, xlab = 'Words per line', ylab = 'Occurrences')
+}
+
+# Reset the plot layout to default after plotting (optional)
+par(mfrow = c(1, 1))
+
+```
+## Sampling the data
+
+
+```{r}
+sample_rate = 0.01
+set.seed(2222)
+
+sample_text <- function (data, size) {
+  sampled_data <- sample(data, size * sample_rate, replace=FALSE)
+  sampled_data <- iconv(sampled_data, "latin1", "ASCII", sub = "")
+}
+
+sampled_data <- mapply(sample_text, file_contents, file_length)
+
+sampleDataFileName <- "../final_first/en_US/en_US.sample_data.txt"
+con <- file(sampleDataFileName, open = "w")
+for(e in sampled_data) {
+  writeLines(e, con)
+  print('Sampled lines')
+  print(length(e))
+  print('Sampled words')
+  print(sum(stri_count_words(e)))
+}
+close(con)
+
+# get number of lines and words from the sample data set
+print('Sampled lines per file')
+sampleDataLines <- sum(sapply(sampled_data,length))
+print(sampleDataLines)
+print('Sampled words per file')
+sampleDataWords <- sum(stri_count_words(sampled_data))
+print(sampleDataWords)
+
+```
+
+```{r}
+badWordsFileName <- "../final_first/en_US/en.txt"
+con <- file(badWordsFileName, open = "r")
+badWords <- readLines(con)
+badWords <- iconv(badWords, "latin1", "ASCII", sub = "")
+close(con)
+print("Total bad words listed ... ")
+print(sum(stri_count_words(badWords)))
+```
+
+```{r}
+library(tm)
+
+dataSet <- sampled_data
+
+docs <- VCorpus(VectorSource(dataSet))
+toSpace <- content_transformer(function(x, pattern) gsub(pattern, " ", x))
+
+# remove internet formats
+docs <- tm_map(docs, toSpace, "(f|ht)tp(s?)://(.*)[.][a-z]+")
+docs <- tm_map(docs, toSpace, "@[^\\s]+")
+docs <- tm_map(docs, toSpace, "\\b[A-Z a-z 0-9._ - ]*[@](.*?)[.]{1,3} \\b")
+
+# remove bad words from the sample data set
+docs <- tm_map(docs, removeWords, badWords)
+
+# convert to lowercase and remove stopwords, punctuation and numbers.
+docs <- tm_map(docs, tolower)
+docs <- tm_map(docs, removeWords, stopwords("english"))
+docs <- tm_map(docs, removePunctuation)
+docs <- tm_map(docs, removeNumbers)
+docs <- tm_map(docs, stripWhitespace)
+docs <- tm_map(docs, PlainTextDocument)
+
+corpus <- docs
+
+saveRDS(corpus, file = "../final_first/en_US/en_US.corpus.rds")
+
+# convert corpus to a dataframe and write lines/words to disk (text)
+corpusText <- data.frame(text = unlist(sapply(corpus, '[', "content")), stringsAsFactors = FALSE)
+con <- file("../final_first/en_US/en_US.corpus.txt", open = "w")
+writeLines(corpusText$text, con)
+close(con)
+
+kable(head(corpusText$text, 20),
+      row.names = FALSE,
+      col.names = NULL,
+      align = c("l"),
+      caption = "First 20 Documents") %>% kable_styling(position = "left")
+
+```
+```{r}
+tdm <- TermDocumentMatrix(corpus)
+freq <- sort(rowSums(as.matrix(tdm)), decreasing = TRUE)
+wordFreq <- data.frame(word = names(freq), freq = freq)
+```
+
+
+
+
+
+
+

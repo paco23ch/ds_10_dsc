@@ -1,0 +1,87 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Cmd+Shift+Enter*. 
+
+```{r}
+# Specify the path to your text file
+file_path <- "../final_first/en_US/en_US.news.txt"
+
+# Read the content of the text file
+text_content <- readLines(file_path)
+
+# Optionally, view the first few lines of the content
+head(text_content,20)
+```
+
+```{r}
+
+# Optionally, view the first few lines of the content
+con <- file("../final_first/en_US/en_US.twitter.txt", "r") 
+readLines(con, 1) ## Read the first line of text 
+readLines(con, 1) ## Read the next line of text 
+readLines(con, 5) ## Read in the next 5 lines of text 
+close(con) ## It's important to close the connection when you are done.
+```
+
+
+```{r}
+
+# Optionally, view the first few lines of the content
+file_path <- "../final_first/en_US/en_US.twitter.txt"
+lines <- readLines(file_path)
+num_lines <- length(lines)
+print(num_lines)
+```
+
+```{r}
+
+# Optionally, view the first few lines of the content
+file_paths <- c("../final_first/en_US/en_US.blogs.txt", "../final_first/en_US/en_US.twitter.txt", "../final_first/en_US/en_US.news.txt")
+
+for(f in file_paths) {
+  print("Finding longest line for ")
+  print(f)
+  con <- file(f, "r") 
+  len <- 0
+  lines <- readLines(con)
+  for(line in lines) {
+    #print(line)
+    #print(nchar(line))
+    if(nchar(line)>len) len <- nchar(line)
+  }
+  print(len)
+  close(con)
+}
+
+#
+
+#lines <- readLines(file_path)
+#num_lines <- length(lines)
+#print(num_lines)
+```
+
+```{r}
+file_content <- readLines("../final_first/en_US/en_US.twitter.txt")
+love_lines <- grep("love", file_content)
+hate_lines <- grep("hate", file_content)
+length(love_lines) / length(hate_lines)
+```
+
+```{r}
+file_content <- readLines("../final_first/en_US/en_US.twitter.txt")
+biostats_lines <- grep("biostats", file_content, value=TRUE)
+biostats_lines
+```
+
+```{r}
+
+text = "A computer once beat me at chess, but it was no match for me at kickboxing"
+grep(text, file_content, value=TRUE)
+```
+
+
