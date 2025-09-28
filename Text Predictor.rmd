@@ -1,22 +1,23 @@
 ---
-title: "Text predictor"
+title: "Milestone Report"
+author: "Francisco Chavez"
 output: html_document
 date: "2025-09-25"
 ---
 
-```{r setup, include=FALSE}
+```{r setup, include=FALSE, warning=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## Language predictor
+## Overview
 
-For this predictor, we will first look at the data, analyze it, clean it and then work our way into a model that can use n-grams to predict the next word.
+This document serves as a checkpoint or milestone in the process for the Data Science Specialization Capstone project, showing the use of the data, some analysis and avenue definition.
 
-## Reading the data
+## Reading and quick summary of the data
 
-The first step will be to read the data, and we will focus on the English language, which is what we can undestand.  The data will come from the URL provided, but once downloaded, will be stored out of the repository, to prevent from crowding it in github.
+The first step will be to read the data, and we will focus on the English language, which is what we can understand.  The data will come from the URL provided, but once downloaded, will be stored out of the repository, to prevent from crowding it in github.  We can see that in terms of words, all three files provide more or less the same amount, however, twitter has many more lines, so in the end words per line reflect that as well. 
 
-```{r cars}
+```{r load_data_and_generate_summary, warning=FALSE}
 
 library(stringi)
 library(kableExtra)
@@ -52,8 +53,11 @@ kable(summary_stats,
 
 ```
 
-```{r}
-library(gridExtra)
+## Word per line distribution
+
+As per the last section, we can confirm that twitter data also has a more clear an predictable distribution, mostly within 40 words per line, while the blogs and news although sweked to the lower values, has lines with very large number of words.
+
+```{r word_per_line_distribution, warning=FALSE}
 par(mfrow = c(length(file_paths),1))
 
 # Loop through file paths and create plots
@@ -67,8 +71,9 @@ par(mfrow = c(1, 1))
 ```
 ## Sampling the data
 
+To make the process more efficient, we will look at 1% of the data, generating a line sample based on that parameter.  As we can see, words per line are very clearly maintaining the distribution we had in the original data, which is encouraging.
 
-```{r}
+```{r data_sampling, warning=FALSE}
 sample_rate = 0.01
 set.seed(2222)
 
@@ -83,24 +88,33 @@ sampleDataFileName <- "../final_first/en_US/en_US.sample_data.txt"
 con <- file(sampleDataFileName, open = "w")
 for(e in sampled_data) {
   writeLines(e, con)
-  print('Sampled lines')
-  print(length(e))
-  print('Sampled words')
-  print(sum(stri_count_words(e)))
 }
 close(con)
 
-# get number of lines and words from the sample data set
-print('Sampled lines per file')
-sampleDataLines <- sum(sapply(sampled_data,length))
-print(sampleDataLines)
-print('Sampled words per file')
-sampleDataWords <- sum(stri_count_words(sampled_data))
-print(sampleDataWords)
+sample_lines <- sapply(sampled_data, length)
+sample_words <- sapply(sapply(sampled_data, stri_count_words), sum)
 
+sample_summary <- data.frame(lines=sample_lines, words=sample_words)
+sample_summary$words_per_line <- sample_summary$words / sample_summary$lines
+
+kable(sample_summary,
+      row.names = TRUE,
+      align = c("l", rep("r", 7)),
+      caption = "") %>% kable_styling(position = "left")
+
+# get number of lines and words from the sample data set
+sampleDataLines <- sum(sapply(sampled_data,length))
+print(paste('Total sampled lines: ',sampleDataLines))
+
+sampleDataWords <- sum(stri_count_words(sampled_data))
+print(paste('Total Sampled words: ', sampleDataWords))
 ```
 
-```{r}
+## Offensive language
+
+To use the data set for training, we will have to first remove offensive words from the sampled text, for that we will use data coming from https://github.com/LDNOOBW/List-of-Dirty-Naughty-Obscene-and-Otherwise-Bad-Words, which was downloaded into a txt file.  That URL contains data for different languages, so the en.txt file will be used for English.  A total of 556 words are contained there.
+
+```{r load_bad_word_data, warning=FALSE}
 badWordsFileName <- "../final_first/en_US/en.txt"
 con <- file(badWordsFileName, open = "r")
 badWords <- readLines(con)
@@ -110,7 +124,20 @@ print("Total bad words listed ... ")
 print(sum(stri_count_words(badWords)))
 ```
 
-```{r}
+## Building the corpus
+
+We need to group the documents into a corpus or vector form, which R can do via rm, so we first create the vector corpus with VCorpus, then apply a series of transformations:
+
+- Remove http/ftp references
+- Remove the @ references as handles for twitter, mainly
+- Remove the @ references which can be part of e-mail, in case there are any
+- Remove the offensive language
+- Convert all docs to lowercase
+- Remove stopwords, punctuation, numbers and extra white spaces
+
+And finally, return a plain text document, to be stored as an RDS format and txt for later use in the apps, but not before showing a few lines of what we have on the consolidated list of lines from the data.
+
+```{r create_corpus, warning=FALSE}
 library(tm)
 
 dataSet <- sampled_data
@@ -126,7 +153,7 @@ docs <- tm_map(docs, toSpace, "\\b[A-Z a-z 0-9._ - ]*[@](.*?)[.]{1,3} \\b")
 # remove bad words from the sample data set
 docs <- tm_map(docs, removeWords, badWords)
 
-# convert to lowercase and remove stopwords, punctuation and numbers.
+# convert to lowercase and remove stop words, punctuation and numbers.
 docs <- tm_map(docs, tolower)
 docs <- tm_map(docs, removeWords, stopwords("english"))
 docs <- tm_map(docs, removePunctuation)
@@ -136,28 +163,153 @@ docs <- tm_map(docs, PlainTextDocument)
 
 corpus <- docs
 
+# save the corpus file for later use
 saveRDS(corpus, file = "../final_first/en_US/en_US.corpus.rds")
 
-# convert corpus to a dataframe and write lines/words to disk (text)
+# save the corpus as a plain text file
 corpusText <- data.frame(text = unlist(sapply(corpus, '[', "content")), stringsAsFactors = FALSE)
 con <- file("../final_first/en_US/en_US.corpus.txt", open = "w")
 writeLines(corpusText$text, con)
 close(con)
 
-kable(head(corpusText$text, 20),
+# show a few lines of the sample
+kable(head(corpusText$text, 10),
       row.names = FALSE,
       col.names = NULL,
       align = c("l"),
-      caption = "First 20 Documents") %>% kable_styling(position = "left")
+      caption = "First 10 Documents") %>% kable_styling(position = "left")
 
 ```
-```{r}
+## Exploratory Data Analysis
+
+On the sample data, we can now proceed to look at specific word frecuencies, for that, we will use the TermDocumentMatrix functionality in tm, which will provide us with the frequencies in each document for every word found.  Additionally, besides the ordinary bar plot, which will provide us with the exact frequencies, we can also use the word cloud, which highlights N number of more frequent words.
+
+```{r plot_most_frequent_words, warning=FALSE}
+library(wordcloud)
+library(RColorBrewer)
+library(ggplot2)
+
 tdm <- TermDocumentMatrix(corpus)
 freq <- sort(rowSums(as.matrix(tdm)), decreasing = TRUE)
 wordFreq <- data.frame(word = names(freq), freq = freq)
+
+# plot the top 10 most frequent words
+g <- ggplot (wordFreq[1:10,], aes(x = reorder(wordFreq[1:10,]$word, -wordFreq[1:10,]$fre),
+                                  y = wordFreq[1:10,]$fre ))
+g <- g + geom_bar( stat = "Identity" , fill = I("blue"))
+g <- g + geom_text(aes(label = wordFreq[1:10,]$fre), vjust = -0.20, size = 3)
+g <- g + xlab("")
+g <- g + ylab("Word Frequencies")
+g <- g + theme(plot.title = element_text(size = 14, hjust = 0.5, vjust = 0.5),
+               axis.text.x = element_text(hjust = 0.5, vjust = 0.5, angle = 45),
+               axis.text.y = element_text(hjust = 0.5, vjust = 0.5))
+g <- g + ggtitle("10 Most Frequent Words")
+print(g)
+
+# construct word cloud
+suppressWarnings (
+    wordcloud(words = wordFreq$word,
+              freq = wordFreq$freq,
+              min.freq = 1,
+              max.words = 100,
+              random.order = FALSE,
+              rot.per = 0.35, 
+              colors=brewer.pal(8, "Dark2"))
+)
+
+```
+## Tokenization
+
+As part of the RWeka package we have the ability to tokenize the data, so we will setup three separate functions to use to plot the unigrams, bigrams and trigrams.
+
+```{r tokenizer_setup, message = FALSE, echo = FALSE, warning=FALSE}
+library(rJava)
+library(RWeka)
+
+unigramTokenizer <- function(x) NGramTokenizer(x, Weka_control(min = 1, max = 1))
+bigramTokenizer <- function(x) NGramTokenizer(x, Weka_control(min = 2, max = 2))
+trigramTokenizer <- function(x) NGramTokenizer(x, Weka_control(min = 3, max = 3))
+```
+## Unigrams
+
+For unigrams, we first use the TDM to add up all the ocurrences of each unigram on each document, applying the tokenizer to the TermDocumentMatrix function.   From there, we can plot the more frequent unigrams.  It should be no surprise that the most frequent words are the actual unigrams, we'll just plot for a few more. 
+
+```{r plotting_unigrams, warning=FALSE}
+# create term document matrix for the corpus
+unigramMatrix <- TermDocumentMatrix(corpus, control = list(tokenize = unigramTokenizer))
+
+# eliminate sparse terms for each n-gram and get frequencies of most common n-grams
+unigramMatrixFreq <- sort(rowSums(as.matrix(removeSparseTerms(unigramMatrix, 0.99))), decreasing = TRUE)
+unigramMatrixFreq <- data.frame(word = names(unigramMatrixFreq), freq = unigramMatrixFreq)
+
+# generate plot
+g <- ggplot(unigramMatrixFreq[1:25,], aes(x = reorder(word, -freq), y = freq))
+g <- g + geom_bar(stat = "identity", fill = I("blue"))
+g <- g + geom_text(aes(label = freq ), vjust = -0.20, size = 3)
+g <- g + xlab("")
+g <- g + ylab("Frequency")
+g <- g + theme(plot.title = element_text(size = 14, hjust = 0.5, vjust = 0.5),
+               axis.text.x = element_text(hjust = 1.0, angle = 45),
+               axis.text.y = element_text(hjust = 0.5, vjust = 0.5))
+g <- g + ggtitle("25 Most Common Unigrams")
+print(g)
 ```
 
+## Bigrams 
+For bigrams, however, we can to look at two word combinations and how frequent they are, so we follow the same procedure described on the previous paragraph, and plot the 25 most common Bigrams.
 
+```{r plotting_bigrams, warning=FALSE}
+# create term document matrix for the corpus
+bigramMatrix <- TermDocumentMatrix(corpus, control = list(tokenize = bigramTokenizer))
+
+# eliminate sparse terms for each n-gram and get frequencies of most common n-grams
+bigramMatrixFreq <- sort(rowSums(as.matrix(removeSparseTerms(bigramMatrix, 0.99))), decreasing = TRUE)
+bigramMatrixFreq <- data.frame(word = names(bigramMatrixFreq), freq = bigramMatrixFreq)
+
+# generate plot
+g <- ggplot(bigramMatrixFreq[1:25,], aes(x = reorder(word, -freq), y = freq))
+g <- g + geom_bar(stat = "identity", fill = I("blue"))
+g <- g + geom_text(aes(label = freq ), vjust = -0.20, size = 3)
+g <- g + xlab("")
+g <- g + ylab("Frequency")
+g <- g + theme(plot.title = element_text(size = 14, hjust = 0.5, vjust = 0.5),
+               axis.text.x = element_text(hjust = 1.0, angle = 45),
+               axis.text.y = element_text(hjust = 0.5, vjust = 0.5))
+g <- g + ggtitle("25 Most Common Bigrams")
+print(g)
+```
+
+## Trigrams
+For trigrams, is the same procedure as bigrams, except we are looking at 3 word combinations.
+
+```{r plotting_trigrams, warning=FALSE}
+# create term document matrix for the corpus
+trigramMatrix <- TermDocumentMatrix(corpus, control = list(tokenize = trigramTokenizer))
+
+# eliminate sparse terms for each n-gram and get frequencies of most common n-grams
+trigramMatrixFreq <- sort(rowSums(as.matrix(removeSparseTerms(trigramMatrix, 0.99))), decreasing = TRUE)
+trigramMatrixFreq <- data.frame(word = names(trigramMatrixFreq), freq = trigramMatrixFreq)
+
+# generate plot
+g <- ggplot(trigramMatrixFreq[1:20,], aes(x = reorder(word, -freq), y = freq))
+g <- g + geom_bar(stat = "identity", fill = I("blue"))
+g <- g + geom_text(aes(label = freq ), vjust = -0.20, size = 3)
+g <- g + xlab("")
+g <- g + ylab("Frequency")
+g <- g + theme(plot.title = element_text(size = 14, hjust = 0.5, vjust = 0.5),
+               axis.text.x = element_text(hjust = 1.0, angle = 45),
+               axis.text.y = element_text(hjust = 0.5, vjust = 0.5))
+g <- g + ggtitle("20 Most Common Trigrams")
+print(g)
+```
+
+## Next steps
+
+The reason we are looking at n-grams and understanding how the data is stored in the corpus, is so that we can come to a matrix that will use combinations of the unigrams to bigrams to trigrams or some similar fashion in order to use a model that uses probability distributions at any given time to see which word may come next, via the identified combinations in the n-grams.
+
+The main idea for the model would be that once the user types in a word, we can look it up in a matrix, and find the highest probability in the list to use as the next word.  We can use greedy algorithms using the highest probability or we can also use a different approach by adding certain parameters to make the algorithm a bit random but with certain sense.
+
+The other interesting point from this work is that we can use some of the 25 samples obtained in the unigram, bigram and trigram sections to test the model once is has ben built.
 
 
 
