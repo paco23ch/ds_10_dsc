@@ -229,6 +229,7 @@ library(RWeka)
 unigramTokenizer <- function(x) NGramTokenizer(x, Weka_control(min = 1, max = 1))
 bigramTokenizer <- function(x) NGramTokenizer(x, Weka_control(min = 2, max = 2))
 trigramTokenizer <- function(x) NGramTokenizer(x, Weka_control(min = 3, max = 3))
+fourgramTokenizer <- function(x) NGramTokenizer(x, Weka_control(min = 4, max = 4))
 ```
 ## Unigrams
 
@@ -291,7 +292,7 @@ trigramMatrixFreq <- sort(rowSums(as.matrix(removeSparseTerms(trigramMatrix, 0.9
 trigramMatrixFreq <- data.frame(word = names(trigramMatrixFreq), freq = trigramMatrixFreq)
 
 # generate plot
-g <- ggplot(trigramMatrixFreq[1:20,], aes(x = reorder(word, -freq), y = freq))
+g <- ggplot(trigramMatrixFreq[1:25,], aes(x = reorder(word, -freq), y = freq))
 g <- g + geom_bar(stat = "identity", fill = I("blue"))
 g <- g + geom_text(aes(label = freq ), vjust = -0.20, size = 3)
 g <- g + xlab("")
@@ -299,9 +300,125 @@ g <- g + ylab("Frequency")
 g <- g + theme(plot.title = element_text(size = 14, hjust = 0.5, vjust = 0.5),
                axis.text.x = element_text(hjust = 1.0, angle = 45),
                axis.text.y = element_text(hjust = 0.5, vjust = 0.5))
-g <- g + ggtitle("20 Most Common Trigrams")
+g <- g + ggtitle("25 Most Common Trigrams")
 print(g)
 ```
+## Fourgrams
+For four, is the same procedure as bigrams, except we are looking at 3 word combinations.
+
+```{r plotting_fourgrams, warning=FALSE}
+# create term document matrix for the corpus
+fourgramMatrix <- TermDocumentMatrix(corpus, control = list(tokenize = fourgramTokenizer))
+
+# eliminate sparse terms for each n-gram and get frequencies of most common n-grams
+fourgramMatrixFreq <- sort(rowSums(as.matrix(removeSparseTerms(fourgramMatrix, 0.99))), decreasing = TRUE)
+fourgramMatrixFreq <- data.frame(word = names(fourgramMatrixFreq), freq = fourgramMatrixFreq)
+
+# generate plot
+g <- ggplot(fourgramMatrixFreq[1:25,], aes(x = reorder(word, -freq), y = freq))
+g <- g + geom_bar(stat = "identity", fill = I("blue"))
+g <- g + geom_text(aes(label = freq ), vjust = -0.20, size = 3)
+g <- g + xlab("")
+g <- g + ylab("Frequency")
+g <- g + theme(plot.title = element_text(size = 14, hjust = 0.5, vjust = 0.5),
+               axis.text.x = element_text(hjust = 1.0, angle = 45),
+               axis.text.y = element_text(hjust = 0.5, vjust = 0.5))
+g <- g + ggtitle("25 Most Common Fourgrams")
+print(g)
+```
+
+## First attempt at models
+
+```{r}
+library(rJava)
+library(RWeka)
+library(dplyr)
+library(tidyr)
+
+# Unigrams will be the default when no options are found
+unigramMatrix <- TermDocumentMatrix(corpus, control = list(tokenize = unigramTokenizer))
+unigramMatrixFreq <- sort(rowSums(as.matrix(removeSparseTerms(unigramMatrix, 0.99))), decreasing = TRUE)
+unigramMatrixFreq <- data.frame(word = names(unigramMatrixFreq), freq = unigramMatrixFreq)
+
+# Creating the bigram model
+bigramMatrix <- TermDocumentMatrix(corpus, control = list(tokenize = bigramTokenizer))
+bigramMatrixFreq <- sort(rowSums(as.matrix(removeSparseTerms(bigramMatrix, 0.99))), decreasing = TRUE)
+bigramMatrixFreq <- data.frame(word = names(bigramMatrixFreq), freq = bigramMatrixFreq)
+bigramMatrixFreq <- bigramMatrixFreq %>% separate(word, into = c("token1","word"), sep=" ") %>% 
+                                          arrange(token1, desc(freq))
+
+# Creating the trigram model
+trigramMatrix <- TermDocumentMatrix(corpus, control = list(tokenize = trigramTokenizer))
+trigramMatrixFreq <- sort(rowSums(as.matrix(removeSparseTerms(trigramMatrix, 0.99))), decreasing = TRUE)
+trigramMatrixFreq <- data.frame(word = names(trigramMatrixFreq), freq = trigramMatrixFreq)
+trigramMatrixFreq <- trigramMatrixFreq %>% separate(word, into = c("token1","token2","word"), sep=" ") %>%
+                                          arrange(token1, token2, desc(freq))
+
+# Creating the fourgram model
+fourgramMatrix <- TermDocumentMatrix(corpus, control = list(tokenize = fourgramTokenizer))
+fourgramMatrixFreq <- sort(rowSums(as.matrix(removeSparseTerms(fourgramMatrix, 0.99))), decreasing = TRUE)
+fourgramMatrixFreq <- data.frame(word = names(fourgramMatrixFreq), freq = fourgramMatrixFreq)
+fourgramMatrixFreq <- fourgramMatrixFreq %>% separate(word, into = c("token1","token2","token3","word"), sep=" ") %>%
+                                          arrange(token1, token2, token3, desc(freq))
+
+```
+
+
+```{r}
+text1 = "right"
+text2 = "let us"
+text3 = "fort jackson south"
+
+words_vector <- unlist(strsplit(text1, " "))
+bigramMatrixFreq[bigramMatrixFreq$token1 == words_vector[1],]
+
+words_vector <- unlist(strsplit(text2, " "))
+trigramMatrixFreq[trigramMatrixFreq$token1 == words_vector[1] & trigramMatrixFreq$token2 == words_vector[2],]
+
+words_vector <- unlist(strsplit(text3, " "))
+fourgramMatrixFreq[fourgramMatrixFreq$token1 == words_vector[1] & fourgramMatrixFreq$token2 == words_vector[2] & fourgramMatrixFreq$token3 == words_vector[3],]
+```
+
+```{r}
+# Install if not already installed: install.packages("readr")
+
+predict_next <- function(input_text, max=3) {
+  words_vector <- unlist(strsplit(input_text," "))
+  preds <- NULL
+  
+  if(is.null(input_text) | input_text == '') {
+    print("Predicting from null...")
+  } else if (length(words_vector) == 1) {
+    print("Predicting from 1...")
+    preds <- bigramMatrixFreq[bigramMatrixFreq$token1 == words_vector,]
+  } else {
+    print("Predicting from 2 or more...")
+    words_vector <- tail(words_vector,2)
+    preds <- trigramMatrixFreq[trigramMatrixFreq$token1 == words_vector[1] & trigramMatrixFreq$token2 == words_vector[2],]
+  }
+  
+  if(is.null(preds) ) {
+    preds <-unigramMatrixFreq
+  } else if(dim(preds)[1] == 0) {
+    preds <-unigramMatrixFreq
+  }
+  preds$prob = preds$freq / sum(preds$freq)
+  head(preds, max)[,c('word','prob')]
+}
+
+predict_next("", 1)
+predict_next("right", 1)
+predict_next("let us", 1)
+predict_next("martin luther king", 1)
+predict_next("what the hell are you",1)
+
+```
+
+```{r}
+predict_next("You're the reason why I smile everyday. Can you follow me please? It would mean the",1)
+```
+
+
 
 ## Next steps
 
