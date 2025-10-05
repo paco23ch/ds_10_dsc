@@ -8,6 +8,7 @@ library(RWeka)
 library(dplyr)
 library(tidyr)
 library(tm)
+library(caret)
 
 
 # Loading files
@@ -214,15 +215,40 @@ set.seed(2222)
 file_paths <- c("../final_first/en_US/en_US.blogs.txt", "../final_first/en_US/en_US.twitter.txt", "../final_first/en_US/en_US.news.txt")
 badWordsFileName <- "../final_first/en_US/en.txt"
 n_gram_limit = 3
-sample_rate = 0.15
+sample_rate = 0.01
+trainpct <- 0.8
+valpct <- 0.1
+testpct <- 0.1
+trainval_pct <- (trainpct)/(trainpct+valpct)
 
 
 file_contents <- read_data(file_paths = file_paths)
 print(paste('Sampling',sample_rate*100,'percent'))
+
+
 sampled_data <- sample_data(file_contents, sample_rate = sample_rate)
+sampled_data <- readLines('../final_first/en_US/en_US.sample_data.txt')
+
+
+inTest <- createDataPartition(seq_len(NROW(sampled_data)),p=testpct, list=FALSE)
+testData <- sampled_data[inTest]
+trainvalData <- sampled_data[-inTest]
+inTrain <- createDataPartition(seq_len(NROW(trainvalData)),p=trainval_pct, list=FALSE)
+trainData <- trainvalData[inTrain]
+valData <- trainvalData[-inTrain]
+
+
 rm(file_contents)
 badWords <- read_offensive(badWordsFileName)
 corpus <- generate_corpus(sampled_data, badWords)
+
+print('Train corpus')
+trainCorpus <- generate_corpus(trainData, badWords)
+print('Validation corpus')
+valCorpus <- generate_corpus(valData, badWords)
+print('Test corpus')
+testCorpus <- generate_corpus(sampltestDataed_data, badWords)
+
 rm(sampled_data)
 n_grams <- create_n_grams(corpus, n_gram_number=n_gram_limit)
 file_name <- paste('../final_first/en_US/ngrams_',sample_rate*100,'pct_',n_gram_limit,'grams.rds',sep='')
