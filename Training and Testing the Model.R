@@ -103,12 +103,9 @@ generate_corpus <- function(dataSet, badWords){
   docs <- tm_map(docs, stripWhitespace)
   docs <- tm_map(docs, PlainTextDocument)
   
-  # save the corpus file for later use
-  saveRDS(docs, file = "../final_first/en_US/en_US.corpus.rds")
-  
   # save the corpus as a plain text file
   corpusText <- data.frame(text = unlist(sapply(docs, '[', "content")), stringsAsFactors = FALSE)
-  con <- file("../final_first/en_US/en_US.corpus.txt", open = "w")
+  con <- file(file_name, open = "w")
   writeLines(corpusText$text, con)
   close(con)
   
@@ -127,18 +124,17 @@ create_n_grams <- function(corpus, n_gram_number=4) {
   print("Setting up n-grams ... ")
   
   # n-gram generation
-  
   n_grams <- list()
 
   # Unigrams will be the default when no options are found
-  for(i in c(1:n_gram_number)) {
+  for(i in c(3:n_gram_number)) {
     print(paste("Generating",i, "grams ... "))
     tokenizer <- function(x) NGramTokenizer(x, Weka_control(min = i, max = i))
     matrix <- TermDocumentMatrix(corpus, control = list(tokenize = tokenizer))
     matrixFreq <- sort(rowSums(as.matrix(removeSparseTerms(matrix, 0.99))), decreasing = TRUE)
     rm(matrix)
     matrixFreq <- data.frame(word = names(matrixFreq), freq = matrixFreq)
-    if(i>1) {
+    if(i>1 & dim(matrixFreq)[1]>0) {
       matrixFreq <- matrixFreq %>% separate(word, into = c("token","word"), sep = " (?=[^ ]*$)")
     }
     n_grams <- c(n_grams, list(matrixFreq))
@@ -215,7 +211,7 @@ set.seed(2222)
 file_paths <- c("../final_first/en_US/en_US.blogs.txt", "../final_first/en_US/en_US.twitter.txt", "../final_first/en_US/en_US.news.txt")
 badWordsFileName <- "../final_first/en_US/en.txt"
 n_gram_limit = 3
-sample_rate = 0.01
+sample_rate = 0.08
 trainpct <- 0.8
 valpct <- 0.1
 testpct <- 0.1
@@ -223,9 +219,8 @@ trainval_pct <- (trainpct)/(trainpct+valpct)
 
 
 file_contents <- read_data(file_paths = file_paths)
+
 print(paste('Sampling',sample_rate*100,'percent'))
-
-
 sampled_data <- sample_data(file_contents, sample_rate = sample_rate)
 sampled_data <- readLines('../final_first/en_US/en_US.sample_data.txt')
 
@@ -237,33 +232,41 @@ inTrain <- createDataPartition(seq_len(NROW(trainvalData)),p=trainval_pct, list=
 trainData <- trainvalData[inTrain]
 valData <- trainvalData[-inTrain]
 
-
 rm(file_contents)
 badWords <- read_offensive(badWordsFileName)
-corpus <- generate_corpus(sampled_data, badWords)
+#corpus <- generate_corpus(sampled_data, badWords)
 
 print('Train corpus')
+file_name <- paste('../final_first/en_US/train_corpus_',sample_rate*100,'pct_',n_gram_limit,'grams.rds',sep='')
 trainCorpus <- generate_corpus(trainData, badWords)
-print('Validation corpus')
-valCorpus <- generate_corpus(valData, badWords)
-print('Test corpus')
-testCorpus <- generate_corpus(testData, badWords)
+saveRDS(trainCorpus, file=file_name)
 
-rm(sampled_data)
+print('Validation corpus')
+file_name <- paste('../final_first/en_US/val_corpus_',sample_rate*100,'pct_',n_gram_limit,'grams.rds',sep='')
+valCorpus <- generate_corpus(valData, badWords)
+saveRDS(valCorpus, file=file_name)
+
+print('Test corpus')
+file_name <- paste('../final_first/en_US/test_corpus_',sample_rate*100,'pct_',n_gram_limit,'grams.rds',sep='')
+testCorpus <- generate_corpus(testData, badWords)
+saveRDS(testCorpus, file=file_name)
+
+#rm(sampled_data)
+
+print('Train n-grams')
 train_n_grams <- create_n_grams(trainCorpus, n_gram_number=n_gram_limit)
 file_name <- paste('../final_first/en_US/train_ngrams_',sample_rate*100,'pct_',n_gram_limit,'grams.rds',sep='')
 saveRDS(dev_n_grams, file=file_name)
 
+print('Val n-grams')
 val_n_grams <- create_n_grams(valCorpus, n_gram_number=n_gram_limit)
 file_name <- paste('../final_first/en_US/val_ngrams_',sample_rate*100,'pct_',n_gram_limit,'grams.rds',sep='')
 saveRDS(val_n_grams, file=file_name)
 
+print('Test n-grams')
 test_n_grams <- create_n_grams(testCorpus, n_gram_number=n_gram_limit)
 file_name <- paste('../final_first/en_US/test_ngrams_',sample_rate*100,'pct_',n_gram_limit,'grams.rds',sep='')
 saveRDS(test_n_grams, file=file_name)
-
-#n_grams <- create_n_grams_2(corpus)
-
 
 #predict_next("", 1, n_grams)
 
@@ -307,3 +310,18 @@ for( i in seq_along(n_gram_experiment) ) {
     n_gram_experiment[[i]] <- n_gram_experiment[[i]] %>% separate('token', into=tokens, sep=' ')
   }
 }
+
+library(dplyr);
+library(tm);
+library(ngram);
+library(textclean);
+library(NLP)
+
+
+
+
+str <-concatenate(as.character(unlist(trainCorpus)))
+ngramDF <- ngram(str, n=3)
+View(ngramDF)
+get.phrasetable(ngramDF)
+#str<-replace_contraction(str)
