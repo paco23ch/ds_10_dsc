@@ -247,12 +247,20 @@ trainCorpus <- generate_corpus(trainData, badWords)
 print('Validation corpus')
 valCorpus <- generate_corpus(valData, badWords)
 print('Test corpus')
-testCorpus <- generate_corpus(sampltestDataed_data, badWords)
+testCorpus <- generate_corpus(testData, badWords)
 
 rm(sampled_data)
-n_grams <- create_n_grams(corpus, n_gram_number=n_gram_limit)
-file_name <- paste('../final_first/en_US/ngrams_',sample_rate*100,'pct_',n_gram_limit,'grams.rds',sep='')
-saveRDS(n_grams, file=file_name)
+train_n_grams <- create_n_grams(trainCorpus, n_gram_number=n_gram_limit)
+file_name <- paste('../final_first/en_US/train_ngrams_',sample_rate*100,'pct_',n_gram_limit,'grams.rds',sep='')
+saveRDS(dev_n_grams, file=file_name)
+
+val_n_grams <- create_n_grams(valCorpus, n_gram_number=n_gram_limit)
+file_name <- paste('../final_first/en_US/val_ngrams_',sample_rate*100,'pct_',n_gram_limit,'grams.rds',sep='')
+saveRDS(val_n_grams, file=file_name)
+
+test_n_grams <- create_n_grams(testCorpus, n_gram_number=n_gram_limit)
+file_name <- paste('../final_first/en_US/test_ngrams_',sample_rate*100,'pct_',n_gram_limit,'grams.rds',sep='')
+saveRDS(test_n_grams, file=file_name)
 
 #n_grams <- create_n_grams_2(corpus)
 
