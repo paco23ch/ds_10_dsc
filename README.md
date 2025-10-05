@@ -25,3 +25,6 @@ Module 10. Data Science Capstone Project
 
 ## Sample project ## REMOVE ##
 - https://github.com/oraclejavanet/coursera-data-science-capstone/blob/master/milestone-report.Rmd
+- https://github.com/oraclejavanet/coursera-data-science-capstone/blob/master/shiny-app/server.Rs
+- https://benthecoder.github.io/JohnHopkinsDataScience/
+- https://rpubs.com/rizwanm789/NextWordPrediction
