@@ -40,25 +40,46 @@ read_data <- function(file_paths) {
 }
 
 # Sampling
-sample_text <- function (data, size, sample_rate) {
-  sampled_data <- sample(data, size * sample_rate, replace=FALSE)
-  sampled_data <- iconv(sampled_data, "latin1", "ASCII", sub = "")
-  return(sampled_data)
+sample_text <- function (data, sample_rate, train, val, test) {
+  trainval_pct <- (train)/(train+val)
+  rows <- length(data)
+  
+  sampled_data <- sample(seq_len(rows), size = rows*sample_rate, replace = FALSE)
+  subset_data <- data[sampled_data]
+  
+  inTest <- sample(seq_len(length(subset_data)), size = length(sampled_data)*test, replace = FALSE)
+  testData <- subset_data[inTest]
+  testData <- iconv(testData, "latin1", "ASCII", sub = "")
+  
+  trainvalData <- subset_data[-inTest]
+  inTrain <- sample(seq_len(length(trainvalData)), size = length(trainvalData)*trainval_pct, replace = FALSE)
+  
+  trainData <- trainvalData[inTrain]
+  trainData <- iconv(trainData, "latin1", "ASCII", sub = "")
+  valData <- trainvalData[-inTrain]
+  valData <- iconv(valData, "latin1", "ASCII", sub = "")
+  
+  #print(size*sample_rate*0.8)
+  #sampled_data <- sample(sample_data, size * sample_rate * 0.8, replace=FALSE)
+  #sampled_data <- iconv(sampled_data, "latin1", "ASCII", sub = "")
+  return(list(train=trainData, val=valData, test=testData))
 }
 
-sample_data  <- function(file_contents, sample_rate) {
+sample_data  <- function(file_contents, sample_rate, train, val, test) {
   print("Sampling data ... ")
   file_length <- sapply(file_contents, length)
-  sampled_data <- mapply(sample_text, file_contents, file_length, sample_rate=sample_rate)
+  sampled_data <- mapply(sample_text, file_contents, sample_rate, train, val, test)
+  #sampled_data <- mapply(sample_text, file_contents, file_length, sample_rate=sample_rate)
   
-  sampleDataFileName <- '../final_first/en_US/en_US.sample_data.txt'
-  con <- file(sampleDataFileName, open = 'w')
-
-  for(e in sampled_data) {
-    writeLines(e, con)
+  for(set in c('train','val','test')) {
+    sampleDataFileName <- paste('../final_first/en_US/en_US_',sample_rate*100,'_',set,'_sample_data.txt',sep='')
+    con <- file(sampleDataFileName, open = 'w')
+    for(e in sampled_data[set,]) {
+      writeLines(e, con)
+    }
+    close(con)    
   }
-  close(con)
-
+  
   sample_lines <- sapply(sampled_data, length)
   sample_words <- sapply(sapply(sampled_data, stri_count_words), sum)
 
@@ -82,7 +103,7 @@ read_offensive <- function(badWordsFileName) {
 }
 
 # Corpus
-generate_corpus <- function(dataSet, badWords){
+generate_corpus <- function(dataSet, badWords, save_file){
   print("Generating corpus ... ")
   docs <- VCorpus(VectorSource(dataSet))
   toSpace <- content_transformer(function(x, pattern) gsub(pattern, " ", x))
@@ -120,20 +141,19 @@ split_ngrams <- function(text) {
 }
 
 
-create_n_grams <- function(corpus, n_gram_number=4) {
+create_n_grams <- function(corpus_input, n_gram_number=4) {
   print("Setting up n-grams ... ")
-  
-  # n-gram generation
   n_grams <- list()
 
   # Unigrams will be the default when no options are found
-  for(i in c(3:n_gram_number)) {
+  for(i in c(1:n_gram_number)) {
     print(paste("Generating",i, "grams ... "))
     tokenizer <- function(x) NGramTokenizer(x, Weka_control(min = i, max = i))
-    matrix <- TermDocumentMatrix(corpus, control = list(tokenize = tokenizer))
+    matrix <- TermDocumentMatrix(corpus_input, control = list(tokenize = tokenizer))
     matrixFreq <- sort(rowSums(as.matrix(removeSparseTerms(matrix, 0.99))), decreasing = TRUE)
     rm(matrix)
     matrixFreq <- data.frame(word = names(matrixFreq), freq = matrixFreq)
+    print(dim(matrixFreq))
     if(i>1 & dim(matrixFreq)[1]>0) {
       matrixFreq <- matrixFreq %>% separate(word, into = c("token","word"), sep = " (?=[^ ]*$)")
     }
@@ -184,7 +204,7 @@ predict_next <- function(input_text, max=3, n_grams, n_gram_limit=4) {
   for(i in c(n_gram_limit:1)) {
     print('Searching ...')
     this_ngram <- NULL
-    search_vector <- tail(words_vector, i)
+    search_vector <- tail(words_vector, i-1)
     print(i)
     search_text <- paste(search_vector, collapse = " ")
     print(search_text)
@@ -210,118 +230,88 @@ set.seed(2222)
 
 file_paths <- c("../final_first/en_US/en_US.blogs.txt", "../final_first/en_US/en_US.twitter.txt", "../final_first/en_US/en_US.news.txt")
 badWordsFileName <- "../final_first/en_US/en.txt"
-n_gram_limit = 3
-sample_rate = 0.08
+n_gram_limit = 4
+sample_rate = 0.16
 trainpct <- 0.8
 valpct <- 0.1
 testpct <- 0.1
 trainval_pct <- (trainpct)/(trainpct+valpct)
 
-
 file_contents <- read_data(file_paths = file_paths)
+badWords <- read_offensive(badWordsFileName)
+
 
 print(paste('Sampling',sample_rate*100,'percent'))
-sampled_data <- sample_data(file_contents, sample_rate = sample_rate)
-sampled_data <- readLines('../final_first/en_US/en_US.sample_data.txt')
+sampled_data <- sample_data(file_contents, sample_rate = sample_rate, trainpct, valpct, testpct)
 
+# rm(file_contents)
 
-inTest <- createDataPartition(seq_len(NROW(sampled_data)),p=testpct, list=FALSE)
-testData <- sampled_data[inTest]
-trainvalData <- sampled_data[-inTest]
-inTrain <- createDataPartition(seq_len(NROW(trainvalData)),p=trainval_pct, list=FALSE)
-trainData <- trainvalData[inTrain]
-valData <- trainvalData[-inTrain]
-
-rm(file_contents)
-badWords <- read_offensive(badWordsFileName)
-#corpus <- generate_corpus(sampled_data, badWords)
-
-print('Train corpus')
-file_name <- paste('../final_first/en_US/train_corpus_',sample_rate*100,'pct_',n_gram_limit,'grams.rds',sep='')
-trainCorpus <- generate_corpus(trainData, badWords)
-saveRDS(trainCorpus, file=file_name)
-
-print('Validation corpus')
-file_name <- paste('../final_first/en_US/val_corpus_',sample_rate*100,'pct_',n_gram_limit,'grams.rds',sep='')
-valCorpus <- generate_corpus(valData, badWords)
-saveRDS(valCorpus, file=file_name)
-
-print('Test corpus')
-file_name <- paste('../final_first/en_US/test_corpus_',sample_rate*100,'pct_',n_gram_limit,'grams.rds',sep='')
-testCorpus <- generate_corpus(testData, badWords)
-saveRDS(testCorpus, file=file_name)
+#
+print('Corpus ...')
+corpusList=list()
+for(set in c('train','val','test')) {
+  print(paste('Generating',set,'...',sep=' '))
+  file_name <- paste('../final_first/en_US/',set,'_corpus_',sample_rate*100,'pct.txt',sep='')
+  corpusSet <- generate_corpus(sampled_data[set,], badWords, file_name)
+  file_name <- paste('../final_first/en_US/',set,'_corpus_',sample_rate*100,'pct.rds',sep='')
+  print(paste('Saving',set,'...',sep=' '))
+  saveRDS(corpusSet, file=file_name)
+  corpusList[set] = list(corpusSet)
+}
 
 #rm(sampled_data)
-
-print('Train n-grams')
-train_n_grams <- create_n_grams(trainCorpus, n_gram_number=n_gram_limit)
-file_name <- paste('../final_first/en_US/train_ngrams_',sample_rate*100,'pct_',n_gram_limit,'grams.rds',sep='')
-saveRDS(dev_n_grams, file=file_name)
-
-print('Val n-grams')
-val_n_grams <- create_n_grams(valCorpus, n_gram_number=n_gram_limit)
-file_name <- paste('../final_first/en_US/val_ngrams_',sample_rate*100,'pct_',n_gram_limit,'grams.rds',sep='')
-saveRDS(val_n_grams, file=file_name)
-
-print('Test n-grams')
-test_n_grams <- create_n_grams(testCorpus, n_gram_number=n_gram_limit)
-file_name <- paste('../final_first/en_US/test_ngrams_',sample_rate*100,'pct_',n_gram_limit,'grams.rds',sep='')
-saveRDS(test_n_grams, file=file_name)
+print('n-grams...')
+n_gram_list = list()
+for(set in c('train','val','test')) {
+  print(paste('Generating',set,'...',sep=' '))
+  file_name <- paste('../final_first/en_US/',set,'_ngrams_',sample_rate*100,'pct_',n_gram_limit,'grams.rds',sep='')
+  n_grams_set <- create_n_grams(corpusList[[set]], n_gram_number=n_gram_limit)
+  print(paste('Saving',set,'...',sep=' '))
+  saveRDS(n_grams_set, file=file_name)
+  n_gram_list[set] = list(n_grams_set)
+}
 
 #predict_next("", 1, n_grams)
 
-predict_next("right", 1, n_grams, n_gram_limit=n_gram_limit)
-predict_next("let us", 1, n_grams, n_gram_limit=n_gram_limit)
-predict_next("martin luther king", 1, n_grams, n_gram_limit=n_gram_limit)
-predict_next("what the hell are you",1, n_grams, n_gram_limit=n_gram_limit)
+predict_next("blabla", 1, n_gram_list[['train']], n_gram_limit=n_gram_limit)
+predict_next("nonsense", 1, n_gram_list[['train']], n_gram_limit=n_gram_limit)
+predict_next("right", 1, n_gram_list[['train']], n_gram_limit=n_gram_limit)
+predict_next("let us", 1, n_gram_list[['train']], n_gram_limit=n_gram_limit)
+predict_next("martin luther king", 1, n_gram_list[['train']], n_gram_limit=n_gram_limit)
+predict_next("what the hell are you",1, n_gram_list[['train']], n_gram_limit=n_gram_limit)
 
-predict_next("The guy in front of me just bought a pound of bacon, a bouquet, and a case of",3, n_grams, n_gram_limit=n_gram_limit)
-predict_next("You're the reason why I smile everyday. Can you follow me please? It would mean the",3, n_grams, n_gram_limit=n_gram_limit)
-predict_next("Hey sunshine, can you follow me and make me the",3, n_grams, n_gram_limit=n_gram_limit)
-predict_next("Very early observations on the Bills game: Offense still struggling but the",3, n_grams, n_gram_limit=n_gram_limit)
-predict_next("Go on a romantic date at the",3, n_grams, n_gram_limit=n_gram_limit)
-predict_next("Well I'm pretty sure my granny has some old bagpipes in her garage I'll dust them off and be on my",3, n_grams, n_gram_limit=n_gram_limit)
-predict_next("Ohhhhh #PointBreak is on tomorrow. Love that film and haven't seen it in quite some",3, n_grams, n_gram_limit=n_gram_limit)
-predict_next("After the ice bucket challenge Louis will push his long wet hair out of his eyes with his little",3, n_grams, n_gram_limit=n_gram_limit)
-predict_next("Be grateful for the good times and keep the faith during the",3, n_grams, n_gram_limit=n_gram_limit)
-predict_next("If this isn't the cutest thing you've ever seen, then you must be",3, n_grams, n_gram_limit=n_gram_limit)
-
-
-predict_next("When you breathe, I want to be the air for you. I'll be there for you, I'd live and I'd",3, n_grams, n_gram_limit=n_gram_limit)
-predict_next("Guy at my table's wife got up to go to the bathroom and I asked about dessert and he started telling me about his",3, n_grams, n_gram_limit=n_gram_limit)
-predict_next("I'd give anything to see arctic monkeys this",3, n_grams, n_gram_limit=n_gram_limit)
-predict_next("Talking to your mom has the same effect as a hug and helps reduce your",3, n_grams, n_gram_limit=n_gram_limit)
-predict_next("When you were in Holland you were like 1 inch away from me but you hadn't time to take a",3, n_grams, n_gram_limit=n_gram_limit)
-predict_next("I'd just like all of these questions answered, a presentation of evidence, and a jury to settle the",3, n_grams, n_gram_limit=n_gram_limit)
-predict_next("I can't deal with unsymetrical things. I can't even hold an uneven number of bags of groceries in each",3, n_grams, n_gram_limit=n_gram_limit)
-predict_next("Every inch of you is perfect from the bottom to the",3, n_grams, n_gram_limit=n_gram_limit)
-predict_next("I’m thankful my childhood was filled with imagination and bruises from playing",3, n_grams, n_gram_limit=n_gram_limit)
-predict_next("I like how the same people are in almost all of Adam Sandler's",3, n_grams, n_gram_limit=n_gram_limit)
+predict_next("The guy in front of me just bought a pound of bacon, a bouquet, and a case of",3, n_gram_list[['train']], n_gram_limit=n_gram_limit)
+predict_next("You're the reason why I smile everyday. Can you follow me please? It would mean the",3, n_gram_list[['train']], n_gram_limit=n_gram_limit)
+predict_next("Hey sunshine, can you follow me and make me the",3, n_gram_list[['train']], n_gram_limit=n_gram_limit)
+predict_next("Very early observations on the Bills game: Offense still struggling but the",3, n_gram_list[['train']], n_gram_limit=n_gram_limit)
+predict_next("Go on a romantic date at the",3, n_gram_list[['train']], n_gram_limit=n_gram_limit)
+predict_next("Well I'm pretty sure my granny has some old bagpipes in her garage I'll dust them off and be on my",3, n_gram_list[['train']], n_gram_limit=n_gram_limit)
+predict_next("Ohhhhh #PointBreak is on tomorrow. Love that film and haven't seen it in quite some",3, n_gram_list[['train']], n_gram_limit=n_gram_limit)
+predict_next("After the ice bucket challenge Louis will push his long wet hair out of his eyes with his little",3, n_gram_list[['train']], n_gram_limit=n_gram_limit)
+predict_next("Be grateful for the good times and keep the faith during the",3, n_gram_list[['train']], n_gram_limit=n_gram_limit)
+predict_next("If this isn't the cutest thing you've ever seen, then you must be",3, n_gram_list[['train']], n_gram_limit=n_gram_limit)
 
 
+predict_next("When you breathe, I want to be the air for you. I'll be there for you, I'd live and I'd",3, n_gram_list[['train']], n_gram_limit=n_gram_limit)
+predict_next("Guy at my table's wife got up to go to the bathroom and I asked about dessert and he started telling me about his",3, n_gram_list[['train']], n_gram_limit=n_gram_limit)
+predict_next("I'd give anything to see arctic monkeys this",3, n_gram_list[['train']], n_gram_limit=n_gram_limit)
+predict_next("Talking to your mom has the same effect as a hug and helps reduce your",3, n_gram_list[['train']], n_gram_limit=n_gram_limit)
+predict_next("When you were in Holland you were like 1 inch away from me but you hadn't time to take a",3, n_gram_list[['train']], n_gram_limit=n_gram_limit)
+predict_next("I'd just like all of these questions answered, a presentation of evidence, and a jury to settle the",3, n_gram_list[['train']], n_gram_limit=n_gram_limit)
+predict_next("I can't deal with unsymetrical things. I can't even hold an uneven number of bags of groceries in each",3, n_gram_list[['train']], n_gram_limit=n_gram_limit)
+predict_next("Every inch of you is perfect from the bottom to the",3, n_gram_list[['train']], n_gram_limit=n_gram_limit)
+predict_next("I’m thankful my childhood was filled with imagination and bruises from playing",3, n_gram_list[['train']], n_gram_limit=n_gram_limit)
+predict_next("I like how the same people are in almost all of Adam Sandler's",3, n_gram_list[['train']], n_gram_limit=n_gram_limit)
 
-n_gram_experiment <- n_grams
+
+n_gram_experiment <- n_gram_list[['val']]
 
 for( i in seq_along(n_gram_experiment) ) {
   print(i)
   if(i>1) {
     grams <- c(1:(i-1))
     tokens <- print(paste("token",grams,sep=''))
-    n_gram_experiment[[i]] <- n_gram_experiment[[i]] %>% separate('token', into=tokens, sep=' ')
+    n_gram_experiment[[i]] <- n_gram_experiment[[i]] %>% separate('token', into=tokens, remove=FALSE, sep=' ')
   }
 }
 
-library(dplyr);
-library(tm);
-library(ngram);
-library(textclean);
-library(NLP)
-
-
-
-
-str <-concatenate(as.character(unlist(trainCorpus)))
-ngramDF <- ngram(str, n=3)
-View(ngramDF)
-get.phrasetable(ngramDF)
-#str<-replace_contraction(str)
