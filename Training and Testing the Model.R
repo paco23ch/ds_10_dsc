@@ -231,7 +231,7 @@ set.seed(2222)
 file_paths <- c("../final_first/en_US/en_US.blogs.txt", "../final_first/en_US/en_US.twitter.txt", "../final_first/en_US/en_US.news.txt")
 badWordsFileName <- "../final_first/en_US/en.txt"
 n_gram_limit = 4
-sample_rate = 0.16
+sample_rate = 0.01
 trainpct <- 0.8
 valpct <- 0.1
 testpct <- 0.1
@@ -315,3 +315,6 @@ for( i in seq_along(n_gram_experiment) ) {
   }
 }
 
+metrics <- n_gram_experiment[[3]]
+metrics <- metrics %>% group_by(token1) %>% mutate(freqt1 = sum(freq))
+metrics <- metrics %>% group_by(token1, token2) %>% mutate(freqt2 = sum(freq))
