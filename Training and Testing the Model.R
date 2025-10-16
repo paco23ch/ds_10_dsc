@@ -118,10 +118,10 @@ generate_corpus <- function(dataSet, badWords, save_file){
   
   # convert to lowercase and remove stop words, punctuation and numbers.
   docs <- tm_map(docs, tolower)
-  #docs <- tm_map(docs, removeWords, stopwords("english"))
   docs <- tm_map(docs, removePunctuation)
   docs <- tm_map(docs, removeNumbers)
   docs <- tm_map(docs, stripWhitespace)
+  #docs <- tm_map(docs, removeWords, stopwords("english"))
   docs <- tm_map(docs, PlainTextDocument)
   
   # save the corpus as a plain text file
@@ -142,23 +142,55 @@ split_ngrams <- function(text) {
 
 
 create_n_grams <- function(corpus_input, n_gram_number=4) {
-  print("Setting up n-grams ... ")
   n_grams <- list()
 
   # Unigrams will be the default when no options are found
   for(i in c(1:n_gram_number)) {
-    print(paste("Generating",i, "grams ... "))
+    print(paste("*** Generating",i, "grams ... "))
     tokenizer <- function(x) NGramTokenizer(x, Weka_control(min = i, max = i))
     matrix <- TermDocumentMatrix(corpus_input, control = list(tokenize = tokenizer))
     matrixFreq <- sort(rowSums(as.matrix(removeSparseTerms(matrix, 0.99))), decreasing = TRUE)
     rm(matrix)
     matrixFreq <- data.frame(word = names(matrixFreq), freq = matrixFreq)
-    print(dim(matrixFreq))
+
     if(i>1 & dim(matrixFreq)[1]>0) {
       matrixFreq <- matrixFreq %>% separate(word, into = c("token","word"), sep = " (?=[^ ]*$)")
+      
+      grams <- c(1:(i-1))
+      tokens <- paste("token",grams,sep='')
+      matrixFreq <- matrixFreq %>% separate('token', into=tokens, remove=FALSE, sep=' ')
+      
+      for(n in c(1:(i-1))) {
+        toks <- c(1:n)
+        group = paste('token', toks, sep='')
+        col_name = paste('freqt',n, sep='')
+        matrixFreq <- matrixFreq %>% group_by(across(all_of(group))) %>% mutate({{col_name}} := sum(freq))
+        
+      }
+    } else {
+      matrixFreq <- matrixFreq[!(matrixFreq$word %in% stopwords("english")),]
     }
+    
+    print(paste("*** Total entries ",dim(matrixFreq)[1]," ...", sep=''))
+    
+    print("*** Calculating probabilities ... ")
+    if(i==1) {
+      matrixFreq[,'probgram'] = matrixFreq[,'freq'] / sum(matrixFreq$freq)
+    } else if(i==2) {
+      matrixFreq[,'probt1'] = matrixFreq[,'freq'] / matrixFreq[,'freqt1']
+      matrixFreq[,'probgram'] = matrixFreq['probt1']
+    } else if(i==3) {
+      matrixFreq[,'probt1'] = matrixFreq[,'freqt1'] / sum(matrixFreq$freq)
+      matrixFreq[,'probt2'] = matrixFreq[,'freq'] / matrixFreq[,'freqt2']
+      matrixFreq[,'probgram'] = matrixFreq['probt1'] * matrixFreq['probt2']
+    } else if(i==4) {
+      matrixFreq[,'probt1'] = matrixFreq[,'freqt1'] / sum(matrixFreq$freq)
+      matrixFreq[,'probt2'] = matrixFreq[,'freqt3'] / matrixFreq[,'freqt2']
+      matrixFreq[,'probt3'] = matrixFreq[,'freq'] / matrixFreq[,'freqt3']
+      matrixFreq[,'probgram'] = matrixFreq['probt1'] * matrixFreq['probt2'] * matrixFreq['probt3']
+    }
+    
     n_grams <- c(n_grams, list(matrixFreq))
-    print(paste("Total:",dim(matrixFreq)[1]))
   }
   
   return(n_grams)
@@ -168,13 +200,13 @@ cleanup_input <- function(text) {
   local_corpus <- Corpus(VectorSource(text))
   
   # remove bad words from the sample data set
-  #local_corpus <- tm_map(local_corpus, removeWords, badWords)
-
+  local_corpus <- tm_map(local_corpus, removeWords, badWords)
+  local_corpus <- suppressWarnings(tm_map(local_corpus, removeWords, stopwords("english")))
   local_corpus <- suppressWarnings(tm_map(local_corpus, tolower))
   local_corpus <- suppressWarnings(tm_map(local_corpus, removePunctuation))
-  #local_corpus <- suppressWarnings(tm_map(local_corpus, removeWords, stopwords("english")))
   local_corpus <- suppressWarnings(tm_map(local_corpus, removeNumbers))
   local_corpus <- suppressWarnings(tm_map(local_corpus, stripWhitespace))
+  
 
   return(content(local_corpus[[1]]))
 }
@@ -220,9 +252,6 @@ predict_next <- function(input_text, max=3, n_grams, n_gram_limit=4) {
     }
 
   }
-
-  #preds$prob = preds$freq / sum(preds$freq)
-  #return(head(preds, max)[,c('word','prob')])
   return(preds)
 }
 
@@ -231,7 +260,7 @@ set.seed(2222)
 file_paths <- c("../final_first/en_US/en_US.blogs.txt", "../final_first/en_US/en_US.twitter.txt", "../final_first/en_US/en_US.news.txt")
 badWordsFileName <- "../final_first/en_US/en.txt"
 n_gram_limit = 4
-sample_rate = 0.01
+sample_rate = 0.61
 trainpct <- 0.8
 valpct <- 0.1
 testpct <- 0.1
@@ -250,7 +279,7 @@ sampled_data <- sample_data(file_contents, sample_rate = sample_rate, trainpct, 
 print('Corpus ...')
 corpusList=list()
 for(set in c('train','val','test')) {
-  print(paste('Generating',set,'...',sep=' '))
+  print(paste('Generating corpus for',set,'...',sep=' '))
   file_name <- paste('../final_first/en_US/',set,'_corpus_',sample_rate*100,'pct.txt',sep='')
   corpusSet <- generate_corpus(sampled_data[set,], badWords, file_name)
   file_name <- paste('../final_first/en_US/',set,'_corpus_',sample_rate*100,'pct.rds',sep='')
@@ -263,7 +292,7 @@ for(set in c('train','val','test')) {
 print('n-grams...')
 n_gram_list = list()
 for(set in c('train','val','test')) {
-  print(paste('Generating',set,'...',sep=' '))
+  print(paste('Generating n-grams for',set,'...',sep=' '))
   file_name <- paste('../final_first/en_US/',set,'_ngrams_',sample_rate*100,'pct_',n_gram_limit,'grams.rds',sep='')
   n_grams_set <- create_n_grams(corpusList[[set]], n_gram_number=n_gram_limit)
   print(paste('Saving',set,'...',sep=' '))
@@ -271,7 +300,17 @@ for(set in c('train','val','test')) {
   n_gram_list[set] = list(n_grams_set)
 }
 
-#predict_next("", 1, n_grams)
+#predict_next("", 1, n_grams) 
+
+#Load n-grams
+n_gram_list = list()
+n_gram_limit = 3
+sample_rate = 0.60
+set = 'train'
+file_name <- paste('../final_first/en_US/',set,'_ngrams_',sample_rate*100,'pct_',n_gram_limit,'grams.rds',sep='')
+n_grams_set <- readRDS(file=file_name)
+n_gram_list[set] = list(n_grams_set)
+
 
 predict_next("blabla", 1, n_gram_list[['train']], n_gram_limit=n_gram_limit)
 predict_next("nonsense", 1, n_gram_list[['train']], n_gram_limit=n_gram_limit)
@@ -304,17 +343,14 @@ predict_next("I’m thankful my childhood was filled with imagination and bruise
 predict_next("I like how the same people are in almost all of Adam Sandler's",3, n_gram_list[['train']], n_gram_limit=n_gram_limit)
 
 
-n_gram_experiment <- n_gram_list[['val']]
-
-for( i in seq_along(n_gram_experiment) ) {
-  print(i)
-  if(i>1) {
-    grams <- c(1:(i-1))
-    tokens <- print(paste("token",grams,sep=''))
-    n_gram_experiment[[i]] <- n_gram_experiment[[i]] %>% separate('token', into=tokens, remove=FALSE, sep=' ')
-  }
-}
-
-metrics <- n_gram_experiment[[3]]
-metrics <- metrics %>% group_by(token1) %>% mutate(freqt1 = sum(freq))
-metrics <- metrics %>% group_by(token1, token2) %>% mutate(freqt2 = sum(freq))
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  

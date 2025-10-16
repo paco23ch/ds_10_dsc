@@ -28,3 +28,11 @@ Module 10. Data Science Capstone Project
 - https://github.com/oraclejavanet/coursera-data-science-capstone/blob/master/shiny-app/server.R
 - https://benthecoder.github.io/JohnHopkinsDataScience/
 - https://rpubs.com/rizwanm789/NextWordPrediction
+
+## Markov Chains
+- https://medium.com/@ddbren/markov-chain-sentences-a32d6d520b96
+- https://brilliant.org/wiki/markov-chains/
+- https://www.kaggle.com/discussions/getting-started/107497
+- https://medium.com/ymedialabs-innovation/next-word-prediction-using-markov-model-570fc0475f96
+- https://www.geeksforgeeks.org/r-language/markov-models-using-r/
+- https://www.google.com/search?q=markov+chain+word+prediction&oq=markov+chain+word+prediction&gs_lcrp=EgZjaHJvbWUyBggAEEUYOTINCAEQABiGAxiABBiKBTINCAIQABiGAxiABBiKBTINCAMQABiGAxiABBiKBTIKCAQQABiABBiiBDIHCAUQABjvBTIKCAYQABiABBiiBDIHCAcQABjvBTIKCAgQABiABBiiBNIBCjIxNzA0ajBqMTWoAgiwAgE&sourceid=chrome&ie=UTF-8
