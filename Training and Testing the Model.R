@@ -201,7 +201,7 @@ cleanup_input <- function(text) {
   
   # remove bad words from the sample data set
   local_corpus <- tm_map(local_corpus, removeWords, badWords)
-  local_corpus <- suppressWarnings(tm_map(local_corpus, removeWords, stopwords("english")))
+  #local_corpus <- suppressWarnings(tm_map(local_corpus, removeWords, stopwords("english")))
   local_corpus <- suppressWarnings(tm_map(local_corpus, tolower))
   local_corpus <- suppressWarnings(tm_map(local_corpus, removePunctuation))
   local_corpus <- suppressWarnings(tm_map(local_corpus, removeNumbers))
@@ -260,7 +260,7 @@ set.seed(2222)
 file_paths <- c("../final_first/en_US/en_US.blogs.txt", "../final_first/en_US/en_US.twitter.txt", "../final_first/en_US/en_US.news.txt")
 badWordsFileName <- "../final_first/en_US/en.txt"
 n_gram_limit = 4
-sample_rate = 0.61
+sample_rate = 0.02
 trainpct <- 0.8
 valpct <- 0.1
 testpct <- 0.1
@@ -304,8 +304,8 @@ for(set in c('train','val','test')) {
 
 #Load n-grams
 n_gram_list = list()
-n_gram_limit = 3
-sample_rate = 0.60
+n_gram_limit = 4
+sample_rate = 0.02
 set = 'train'
 file_name <- paste('../final_first/en_US/',set,'_ngrams_',sample_rate*100,'pct_',n_gram_limit,'grams.rds',sep='')
 n_grams_set <- readRDS(file=file_name)
@@ -342,15 +342,129 @@ predict_next("Every inch of you is perfect from the bottom to the",3, n_gram_lis
 predict_next("I’m thankful my childhood was filled with imagination and bruises from playing",3, n_gram_list[['train']], n_gram_limit=n_gram_limit)
 predict_next("I like how the same people are in almost all of Adam Sandler's",3, n_gram_list[['train']], n_gram_limit=n_gram_limit)
 
+questions = c("The guy in front of me just bought a pound of bacon, a bouquet, and a case of",
+              "You're the reason why I smile everyday. Can you follow me please? It would mean the",
+              "Hey sunshine, can you follow me and make me the",
+              "Very early observations on the Bills game: Offense still struggling but the",
+              "Go on a romantic date at the",
+              "Well I'm pretty sure my granny has some old bagpipes in her garage I'll dust them off and be on my",
+              "Ohhhhh #PointBreak is on tomorrow. Love that film and haven't seen it in quite some",
+              "After the ice bucket challenge Louis will push his long wet hair out of his eyes with his little",
+              "Be grateful for the good times and keep the faith during the",
+              "If this isn't the cutest thing you've ever seen, then you must be",
+              "When you breathe, I want to be the air for you. I'll be there for you, I'd live and I'd",
+              "Guy at my table's wife got up to go to the bathroom and I asked about dessert and he started telling me about his",
+              "I'd give anything to see arctic monkeys this",
+              "Talking to your mom has the same effect as a hug and helps reduce your",
+              "When you were in Holland you were like 1 inch away from me but you hadn't time to take a",
+              "I'd just like all of these questions answered, a presentation of evidence, and a jury to settle the",
+              "I can't deal with unsymetrical things. I can't even hold an uneven number of bags of groceries in each",
+              "Every inch of you is perfect from the bottom to the",
+              "I’m thankful my childhood was filled with imagination and bruises from playing",
+              "I like how the same people are in almost all of Adam Sandler's")
 
+answers = c("beer", "world","happiest","defense","beach","way","time","finger","bad","insane",
+  "die","marital","weekend","stess","picture","matter","hand","top","outside","movies")
+
+files = c("../final_first/en_US/train_ngrams_2pct_4grams.rds",
+          "../final_first/en_US/train_ngrams_5pct_4grams.rds",
+          "../final_first/en_US/train_ngrams_15pct_4grams.rds",
+          "../final_first/en_US/train_ngrams_25pct_4grams.rds",
+          "../final_first/en_US/train_ngrams_61pct_4grams.rds"
+          )
+
+percents = c(2,5,15,25,61)
+n_grams_list = c(2,3,4)
+
+
+predict_next_app <- function(input_text, max=3, n_grams, n_gram_limit=4) {
+  input_text <- cleanup_input(input_text)
+  words_vector <- unlist(strsplit(input_text," "))
+  preds <- NULL
+  schema <- NULL
   
+  if(is.null(input_text) | input_text == '') {
+    schema <- n_grams[[1]]
+  } else {
+    potential_words <- length(words_vector)
+    use_ngram <- potential_words + 1
+    if(potential_words > n_gram_limit-1) {
+      use_ngram <- n_gram_limit
+      words_vector <- tail(words_vector, n_gram_limit-1)
+      input_text <- paste(words_vector, collapse = " ")
+    } 
+    schema = n_grams[[use_ngram]]
+  } 
   
+  for(i in c(n_gram_limit:1)) {
+    this_ngram <- NULL
+    search_vector <- tail(words_vector, i-1)
+    search_text <- paste(search_vector, collapse = " ")
+    if(i>1) {
+      this_ngram <- n_grams[[i]][n_grams[[i]]['token']==search_text,]
+    } else {
+      this_ngram <- head(n_grams[[i]],max)
+    }
+    
+    if(!is.null(this_ngram)) {
+      if(dim(this_ngram)[1] > 0) {
+        preds <- head(this_ngram,max)
+        return(list(head(preds,1)$word, preds))
+      }      
+    } else
+      return(list(NULL,NULL))
+    
+  }
+  return( list(head(preds,1)$word, preds))
+}
+
+pct_array = c()
+ngl_array = c()
+q_array = c()
+true_y = c()
+pred_y = c()
+
+sum_pct_array = c()
+sum_ngl_array = c()
+acc_array = c()
+
+for(file in seq_along(files)) {
+  print(paste("reading",files[file]))
+  n_grams_set <- readRDS(file=files[file])
+  for(ng_limit in n_grams_list) {
+    print(paste("ng_limit",ng_limit))
+    correct = 0
+    for(i in seq_along(questions)) {
+      results = predict_next_app(questions[i],3, n_grams_set, n_gram_limit=ng_limit)
+      if(results[[1]] == answers[i]) {
+        correct = correct + 1
+      }
+      pct_array = c(pct_array, percents[file])
+      ngl_array = c(ngl_array, ng_limit)
+      q_array = c(q_array, i)
+      true_y = c(true_y, answers[i])
+      pred_y = c(pred_y, results[[1]])
+    }
+    accuracy = correct / length(questions)
+    sum_pct_array = c(sum_pct_array, percents[file])
+    sum_ngl_array = c(sum_ngl_array, ng_limit)
+    acc_array = c(acc_array, accuracy)
+  }
+}
+
+results <- data.frame(percent=pct_array, n_grams=ngl_array, question=q_array, y=true_y, y_hat=pred_y)
+
+summary <- data.frame(percent=sum_pct_array, n_grams=sum_ngl_array, accuracy=acc_array)
   
+file_name <- '../final_first/en_US/train_ngrams_25pct_4grams.rds'
+n_grams_set <- readRDS(file=file_name)
+new_file_name <- '../final_first/en_US/train_ngrams_25pct_4grams_deploy.rds'
+for(i in seq_along(n_grams_set)) {
+  if(i>1) {
+    n_grams_set[[i]] <- n_grams_set[[i]][,c('token','word','freq','probgram')]
+  }
   
-  
-  
-  
-  
-  
+}
+saveRDS(n_grams_set, new_file_name)
   
   

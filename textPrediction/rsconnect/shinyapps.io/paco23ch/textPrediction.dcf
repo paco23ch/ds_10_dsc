@@ -5,7 +5,7 @@ account: paco23ch
 server: shinyapps.io
 hostUrl: https://api.shinyapps.io/v1
 appId: 15771852
-bundleId: 11040950
+bundleId: 11046341
 url: https://paco23ch.shinyapps.io/textPrediction/
 version: 1
 asMultiple: FALSE
