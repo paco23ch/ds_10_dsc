@@ -9,27 +9,53 @@ output: ioslides_presentation
 knitr::opts_chunk$set(echo = FALSE)
 ```
 
-## R Markdown
+## Writer's block?  Here's the solution:
 
-This is an R Markdown presentation. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+- This is an app that will help you on making progress when stuck trying to bring your next novel, all you have to do:
+- The app will keep bringing up new words as you continue to write
+- This will jog your memory and stimuate the thinking process!
 
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document.
+## Instructions
 
-## Slide with Bullets
+- Click in the link to get to the app -> https://paco23ch.shinyapps.io/textPrediction/
+- Once the page loads, follow the instructions to load the pre-trained model
+- Once the file has been loaded, all you have to do is to select the settings for the model:
+  - How many words to use to predict the next word
+  - How many additional suggestions you want generated
 
-- Bullet 1
-- Bullet 2
-- Bullet 3
+## Methodology
 
-## Slide with R Output
+- We used a set of data from twitter, blogs and news provided by SwiftKey
+- Did a preliminary cleanup of the data, removing all offensive words, punctuation and others, to get a stream of continuous words
+- We analyzed a small sample (1% of the data) of the combinations of 2, 3 and 4 words
+- The idea is to identify patterns and be able to predict the next word based on the previous 1 to 3 words
+- We used different sample sizes to train multiple models
+- Deployed a small model as a PoC, this is only 2% of the data with a front-end to experiment.
 
-```{r cars, echo = TRUE}
-summary(cars)
-```
+## Algorithm
 
-## Slide with Plot
+- The pre-trained model contains 4 main sets to be used (1-4 grams):
+- Based on the settings, the model will use the highest preferred value to predict the next word
+  - for example n-gram=4, means the model will first try to predict with the last 3 words typed in to find a suggestion
+  - if no suggestions can be found, the max n-gram value will be decreased by 1 to find more options
+  - if nothing can be found, then the most popular words will be used as suggestions
+- The model will return the most likely word based on the probability calculated previously and the k number of values requested by the user, along with their probability
 
-```{r pressure}
-plot(pressure)
+## n-gram Test results
+
+- Sampled data to see the effect on accuracy
+
+```{r test_results, warning=FALSE}
+library(ggplot2)
+
+test_results <- readRDS(file="../final_first/en_US/test_scores_all.rds")
+dodge <- position_dodge(width = 0.9)
+
+ggplot(test_results, aes(x = interaction(n_grams,percent), y = accuracy, fill = percent)) +
+  geom_bar(stat = "identity", position = position_dodge()) + # Use geom_line for line plots, geom_point for scatter plots
+  labs(title = "Accuracy for n-grams and percent sampled",
+       x = "n-grams and percent sampled",
+       y = "Accuracy") +
+  theme_minimal()
 ```
 

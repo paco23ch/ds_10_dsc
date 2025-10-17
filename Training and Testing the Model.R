@@ -260,7 +260,7 @@ set.seed(2222)
 file_paths <- c("../final_first/en_US/en_US.blogs.txt", "../final_first/en_US/en_US.twitter.txt", "../final_first/en_US/en_US.news.txt")
 badWordsFileName <- "../final_first/en_US/en.txt"
 n_gram_limit = 4
-sample_rate = 0.02
+sample_rate = 0.75
 trainpct <- 0.8
 valpct <- 0.1
 testpct <- 0.1
@@ -373,6 +373,13 @@ files = c("../final_first/en_US/train_ngrams_2pct_4grams.rds",
           "../final_first/en_US/train_ngrams_61pct_4grams.rds"
           )
 
+test_files = c("../final_first/en_US/test_ngrams_2pct_4grams.rds",
+          "../final_first/en_US/test_ngrams_5pct_4grams.rds",
+          "../final_first/en_US/test_ngrams_15pct_4grams.rds",
+          "../final_first/en_US/test_ngrams_25pct_4grams.rds",
+          "../final_first/en_US/test_ngrams_61pct_4grams.rds"
+)
+
 percents = c(2,5,15,25,61)
 n_grams_list = c(2,3,4)
 
@@ -409,15 +416,17 @@ predict_next_app <- function(input_text, max=3, n_grams, n_gram_limit=4) {
     if(!is.null(this_ngram)) {
       if(dim(this_ngram)[1] > 0) {
         preds <- head(this_ngram,max)
-        return(list(head(preds,1)$word, preds))
+        return(head(preds,1)$word)
       }      
     } else
-      return(list(NULL,NULL))
+      return(NULL)
     
   }
-  return( list(head(preds,1)$word, preds))
+  return( head(preds,1)$word)
 }
 
+
+#### Testing with the 20 questions
 pct_array = c()
 ngl_array = c()
 q_array = c()
@@ -431,6 +440,7 @@ acc_array = c()
 for(file in seq_along(files)) {
   print(paste("reading",files[file]))
   n_grams_set <- readRDS(file=files[file])
+  n_grams_set_test <- readRDS(file=test_files[file])
   for(ng_limit in n_grams_list) {
     print(paste("ng_limit",ng_limit))
     correct = 0
@@ -455,7 +465,83 @@ for(file in seq_along(files)) {
 results <- data.frame(percent=pct_array, n_grams=ngl_array, question=q_array, y=true_y, y_hat=pred_y)
 
 summary <- data.frame(percent=sum_pct_array, n_grams=sum_ngl_array, accuracy=acc_array)
+
+
+#### Testing with the test set
+files = c("../final_first/en_US/train_ngrams_2pct_4grams.rds",
+          "../final_first/en_US/train_ngrams_5pct_4grams.rds",
+          "../final_first/en_US/train_ngrams_15pct_4grams.rds",
+          "../final_first/en_US/train_ngrams_25pct_4grams.rds",
+          "../final_first/en_US/train_ngrams_61pct_4grams.rds"
+        )
+
+test_files = c("../final_first/en_US/test_ngrams_2pct_4grams.rds",
+               "../final_first/en_US/test_ngrams_5pct_4grams.rds",
+               "../final_first/en_US/test_ngrams_15pct_4grams.rds",
+               "../final_first/en_US/test_ngrams_25pct_4grams.rds",
+               "../final_first/en_US/test_ngrams_61pct_4grams.rds"
+)
+
+predict_next_test <- function(input_text, max=1, n_grams=n_grams_set, n_gram_limit=4) {
+  #input_text <- cleanup_input(input_text)
+
+  preds <- NULL
+  schema <- NULL
+  this_ngram <- NULL
   
+  if(n_gram_limit>1) {
+    this_ngram <- n_grams[[n_gram_limit]][n_grams[[n_gram_limit]]['token']==input_text,]
+  } else {
+    this_ngram <- head(n_grams[[n_gram_limit]],max)
+  }
+  
+  if(dim(this_ngram)[1] > 0) {
+    preds <- head(this_ngram,max)
+    return( head(preds,1)$word )
+  }
+  else {
+    return('')
+  }
+
+}
+
+percents = c(2,5,15,25,61)
+n_grams_list = c(2,3,4)
+
+set.seed(2222)
+
+sum_pct_array = c()
+sum_ngl_array = c()
+acc_array = c()
+sample_size = 1000
+
+for(file in seq_along(files)) {
+  print(paste("reading",files[file]))
+  n_grams_set <- readRDS(file=files[file])
+  n_grams_set_test <- readRDS(file=test_files[file])
+  for(ng_limit in n_grams_list) {
+    print(paste("ng_limit",ng_limit))
+    #sample_rows <- sample(seq_len(dim(n_grams_set_test[[ng_limit]])[1]), size = sample_size, replace = FALSE)
+    sample_rows = c(1:1000)
+    n_grams_set_test[[ng_limit]] <- n_grams_set_test[[ng_limit]][sample_rows,] %>% 
+      mutate(y_hat = predict_next_test(token,1, n_grams_set, n_gram_limit=ng_limit) )
+    
+    correct = sum(n_grams_set_test[[ng_limit]]$word == n_grams_set_test[[ng_limit]]$y_hat)
+
+    accuracy = correct / dim(n_grams_set_test[[ng_limit]])[1]
+    sum_pct_array = c(sum_pct_array, percents[file])
+    sum_ngl_array = c(sum_ngl_array, ng_limit)
+    acc_array = c(acc_array, accuracy)
+  }
+}
+
+#results <- data.frame(percent=pct_array, n_grams=ngl_array, question=q_array, y=true_y, y_hat=pred_y)
+
+summary <- data.frame(percent=sum_pct_array, n_grams=sum_ngl_array, accuracy=acc_array)
+saveRDS(summary, "../final_first/en_US/test_scores_all.rds")
+View(summary)
+
+
 file_name <- '../final_first/en_US/train_ngrams_25pct_4grams.rds'
 n_grams_set <- readRDS(file=file_name)
 new_file_name <- '../final_first/en_US/train_ngrams_25pct_4grams_deploy.rds'
@@ -467,4 +553,6 @@ for(i in seq_along(n_grams_set)) {
 }
 saveRDS(n_grams_set, new_file_name)
   
-  
+
+
+
